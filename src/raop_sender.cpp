@@ -2130,6 +2130,9 @@ void RaopSender::onControlDatagram_(std::span<const uint8_t> dg, const RaopEndpo
     // RetransmitRequest: lost_seqno u16 @4, lost_packets u16 @6.
     const uint16_t lostSeq   = uint16_t((uint16_t(dg[4]) << 8) | dg[5]);
     const uint16_t lostCount = uint16_t((uint16_t(dg[6]) << 8) | dg[7]);
+    // Receiver signals packet loss / late arrivals: frequent retransmits at
+    // low scheduled latency mean the latency is too small for the link.
+    info_("Cast: retransmit request seq={} count={}", lostSeq, lostCount);
     for (uint16_t i = 0; i < lostCount; ++i) {
         const uint16_t s = uint16_t(lostSeq + i);
         const int slot = s & (kBacklogSize - 1);

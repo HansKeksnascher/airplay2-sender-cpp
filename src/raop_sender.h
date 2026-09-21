@@ -142,6 +142,14 @@ public:
     // the receiver keeps its own current volume.
     void setVolume(double pct);
 
+    // Scheduled stream latency in 44.1 kHz frames: the per-packet RTP
+    // timestamps start at this offset ahead of wall clock, and the sync
+    // packets announce the receiver's play position as now - latency.
+    // Call BEFORE start(); mid-session changes would jump the timeline.
+    // Default 22050 + 44100 (1.5 s, pyatv); the stream SETUP announces
+    // latencyMin 11025 / latencyMax 88200, so stay inside that range.
+    void setLatency(uint32_t frames) { latency_ = frames; }
+
     // Now-playing metadata pushed to the receiver via DMAP-tagged
     // SET_PARAMETER (title/artist/album) + the cover as image/jpeg|png.
     // Stored when not streaming and (re)sent on the next RECORD; sent

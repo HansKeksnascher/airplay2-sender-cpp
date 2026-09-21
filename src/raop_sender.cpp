@@ -624,20 +624,28 @@ void RaopSender::onUdpDatagram(RaopUdp s, std::span<const uint8_t> bytes, const 
 
 void RaopSender::flush() {
     if (state_ != State::Streaming) return;
+    // pyatv's flush form: Range + Session + RTP-Info. The RTP-Info anchor
+    // (next packet's seq + rtp time) is what the receiver keys on to
+    // discard buffered audio; without it receivers may ignore the FLUSH.
+    const std::string rtpInfo = "RTP-Info: seq=" + std::to_string(seq_)
+        + ";rtptime=" + std::to_string(rtptime32_()) + "\r\n";
     if (airplay2_) {
         // Encrypted control channel, fire-and-forget like the keep-alive
         // POST: the 200 reply is matched by FIFO + discarded
         // (handleResponse_ FLUSH no-op). No handshake timeout: this rides
-        // a live streaming session.
+        // a live streaming session. AP2 has no RTSP Session header.
         std::string req = "FLUSH " + rtspUri_() + " RTSP/1.0\r\n";
         req += "CSeq: " + std::to_string(cseq_++) + "\r\n";
         req += "User-Agent: AirPlay/550.10\r\n";
         req += "DACP-ID: " + dacpId_ + "\r\n";
         req += "Active-Remote: " + std::to_string(activeRemote_) + "\r\n";
         req += "Client-Instance: " + dacpId_ + "\r\n";
+        req += "Range: npt=0-\r\n";
+        req += rtpInfo;
         req += "Content-Length: 0\r\n\r\n";
         pendingMethods_.push_back("FLUSH");
         pendingIsHttp_.push_back(false);
+        info_("Cast: FLUSH sent (rtp seq={} time={})", seq_, rtptime32_());
         writeRtsp_(req);
     } else {
         Extra extra;

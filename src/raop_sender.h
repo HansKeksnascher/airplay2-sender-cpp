@@ -150,6 +150,13 @@ public:
     // latencyMin 11025 / latencyMax 88200, so stay inside that range.
     void setLatency(uint32_t frames) { latency_ = frames; }
 
+    // Drop the receiver's buffered audio immediately (AirPlay FLUSH): the
+    // scheduled latency means the receiver holds ~latency worth of audio
+    // that would keep playing after a pause/track transition. Fire-and-
+    // forget while Streaming; the RTP timeline keeps running (the pacer
+    // pads silence), so a later resume continues seamlessly.
+    void flush();
+
     // Now-playing metadata pushed to the receiver via DMAP-tagged
     // SET_PARAMETER (title/artist/album) + the cover as image/jpeg|png.
     // Stored when not streaming and (re)sent on the next RECORD; sent

@@ -1548,6 +1548,18 @@ void RaopSender::handlePairSetupM4_(const std::string& body) {
         ap2_->controlIn  = hkdfSha512("Control-Salt",
                                       "Control-Read-Encryption-Key",
                                       ap2_->sharedSecret, 32);
+        // The event-channel keys are derived the same way; they were
+        // previously only derived on the pair-verify path, so transient
+        // sessions left the event channel unkeyed: every event push from
+        // the receiver was drained unanswered, and its watchdog closed
+        // the session after ~30 s. Same swap rule as the verify path
+        // below (the channel is a reverse connection).
+        ap2_->eventIn  = hkdfSha512("Events-Salt",
+                                    "Events-Write-Encryption-Key",
+                                    ap2_->sharedSecret, 32);
+        ap2_->eventOut = hkdfSha512("Events-Salt",
+                                    "Events-Read-Encryption-Key",
+                                    ap2_->sharedSecret, 32);
         pairStage_ = PairStage::Done;
         afterAuthOk_();
         return;

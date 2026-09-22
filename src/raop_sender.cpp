@@ -1822,7 +1822,13 @@ void RaopSender::sendAp2SetupSession_() {
     d.emplace_back("sessionUUID", Value::str(ap2_->sessionUuid));
     d.emplace_back("timingPort", Value::integer(localTimingPort_));
     d.emplace_back("timingProtocol", Value::str("NTP"));
-    d.emplace_back("isMultiSelectAirPlay", Value::boolean(true));
+    // The bridge drives exactly one receiver per session, so this is never a
+    // multi-select (multi-room) controller: isMultiSelectAirPlay must be
+    // false. pyatv hardcodes true (Apple-only targets tolerate it), but
+    // stricter third-party receivers (Sonos) accept the session and then
+    // never render audio. owntone omits the key entirely. The remaining
+    // fields must stay: Sonos returns 400 to the stream SETUP without them.
+    d.emplace_back("isMultiSelectAirPlay", Value::boolean(false));
     d.emplace_back("groupContainsGroupLeader", Value::boolean(false));
     d.emplace_back("macAddress", Value::str(identity_.deviceId));
     d.emplace_back("model", Value::str(identity_.model));

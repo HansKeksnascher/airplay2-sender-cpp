@@ -951,7 +951,8 @@ void testAp2Transient() {
         CHECK(s("osName") == "iPhone OS" && s("osVersion") == "16.5" && s("osBuildVersion") == "20F66" && s("sourceVersion") == "690.7.1",
               "os identity fields");
         auto* b = root->find("isMultiSelectAirPlay");
-        CHECK(b && b->type == airplay::bplist::Value::Type::Bool && b->b, "isMultiSelectAirPlay true");
+        CHECK(b && b->type == airplay::bplist::Value::Type::Bool && !b->b,
+              "isMultiSelectAirPlay false (single receiver, Sonos-safe)");
     }
     // event channel opened to the port from the session SETUP reply, before RECORD
     REQUIRE(r.io.connects.size() == 2 && r.io.connects[1].ch == RaopTcp::Event, "event channel connect requested");

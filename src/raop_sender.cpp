@@ -260,6 +260,16 @@ std::string stripCrLf(std::string s) {
     return s;
 }
 
+// Binary plists are mostly readable ASCII key/value strings; render them with
+// every non-printable byte as '.', so a debug log reveals an event's keys.
+std::string printablePlist(const std::string& body) {
+    std::string out;
+    out.reserve(body.size());
+    for (const unsigned char c : body)
+        out.push_back((c >= 0x20 && c < 0x7F) ? static_cast<char>(c) : '.');
+    return out;
+}
+
 // DMAP tag: 4-char ASCII code + 4-byte big-endian length + payload.
 std::string dmapTag(const char code[5], const std::string& payload) {
     std::string t(code, 4);
@@ -272,6 +282,36 @@ std::string dmapTag(const char code[5], const std::string& payload) {
 }
 
 } // namespace
+
+// Receiver-originated event command decoder. AirPlay 2 receivers (HomePod et
+// al) push `POST /command` RTSP requests on the event channel; the body is a
+// binary plist. A receiver-originated volume notification (shairport-sync's
+// "dvlc" form, and what HomePod sends for its volume buttons) carries a real
+// `volume` in 0..1 either at the top level or nested under `params`. Be
+// lenient about `type`/`value`: any dict carrying a numeric volume is treated
+// as a volume event, since nothing else on this channel does.
+std::optional<double> parseRemoteVolumeCommand(std::span<const uint8_t> body) {
+    if (body.empty()) return std::nullopt;
+    airplay::Bytes data(body.begin(), body.end());
+    auto root = airplay::bplist::decode(data);
+    if (!root || root->type != airplay::bplist::Value::Type::Dict) return std::nullopt;
+
+    auto asVolume = [](const airplay::bplist::Value& v) -> std::optional<double> {
+        if (v.type == airplay::bplist::Value::Type::Real) return v.r;
+        if (v.type == airplay::bplist::Value::Type::Int)  return double(v.i);
+        return std::nullopt;
+    };
+
+    if (const auto* vol = root->find("volume"))
+        if (auto v = asVolume(*vol)) return v;
+
+    if (const auto* params = root->find("params"))
+        if (params->type == airplay::bplist::Value::Type::Dict)
+            if (const auto* vol = params->find("volume"))
+                if (auto v = asVolume(*vol)) return v;
+
+    return std::nullopt;
+}
 
 RaopSender::RaopSender(RaopIo& io, RaopEvents events, RaopLogSink log)
     : io_(io),
@@ -868,7 +908,21 @@ void RaopSender::onEventReadyRead_(std::span<const uint8_t> bytes) {
         }
         const size_t total = headEnd + 4 + size_t(contentLen > 0 ? contentLen : 0);
         if (eventPlainBuf_.size() < total) break;   // body still arriving
+        const std::string body =
+            eventPlainBuf_.substr(headEnd + 4, size_t(contentLen > 0 ? contentLen : 0));
         eventPlainBuf_.erase(0, total);
+        // Receiver-originated output-volume event (HomePod/Sonos volume
+        // buttons). Anything else is logged in printable form at debug so the
+        // exact payload a given receiver sends is diagnosable.
+        if (auto unit = parseRemoteVolumeCommand(
+                std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(body.data()),
+                                         body.size()))) {
+            info_("Cast: AP2 remote volume event: {:.4f}", *unit);
+            if (events_.remoteVolumeChanged) events_.remoteVolumeChanged(*unit);
+        } else if (!body.empty() && body.find("updateInfo") == std::string::npos) {
+            // Routine updateInfo keep-alives are large and frequent; skip them.
+            info_("Cast: AP2 event command body: {}", printablePlist(body));
+        }
         // Encrypted 200 OK, owntone's respond() sends a BARE 200 (just Server),
         // no Content-Length/Audio-Latency (those can corrupt the receiver's
         // realtime timeline). Echo CSeq when the request carried one.

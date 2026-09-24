@@ -74,7 +74,19 @@ struct RaopEvents {
     // should persist for this device id (later connects skip the PIN).
     // `credsJson` is opaque to the host.
     std::function<void(const std::string& deviceId, const std::string& credsJson)> credentialsObtained;
+    // The receiver changed its own output volume (AP2 event channel,
+    // `POST /command` sendMediaRemoteCommand). `unitVolume` is 0..1 where
+    // 1.0 = 0 dBFS and 0.0 = the AirPlay floor: unit = db/30 + 1, the same
+    // domain shairport-sync uses for receiver-originated volume
+    // notifications. Only fired when an event actually carries a volume.
+    std::function<void(double unitVolume)> remoteVolumeChanged;
 };
+
+// Decode a receiver-originated AP2 `POST /command` bplist body and return the
+// unit output volume (0..1) when the event carries one. Returns nullopt for
+// any other event (updateInfo, transport commands, ...). Exposed for tests;
+// RaopSender calls it internally before firing RaopEvents::remoteVolumeChanged.
+std::optional<double> parseRemoteVolumeCommand(std::span<const uint8_t> body);
 
 // How the receiver sees us: the name on its PIN dialog / as the AirPlay
 // source, the device id it keys its access list on, and the model string.
